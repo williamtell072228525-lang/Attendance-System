@@ -21,9 +21,9 @@ Please credit "0J (Lin Jie / 0rigin1856)" when redistributing or modifying this 
 
 const API_CONFIG = {
   // 正式環境的 API URL
-  apiUrl: "https://script.google.com/macros/s/AKfycbzvZPwRXNBfbsi9YICkDCu3lfTRjofMth_OwViQzGVGkoba-2yunqlHQluEp3QF_qzh/exec",
+  apiUrl: "https://script.google.com/macros/s/AKfycbxqQR0WabuC0f3MUr7Gjc0m4PpzRLVSRs63FJX6CKwGrw5JF7Q2yuHn1Oe67uS5HyWM/exec",
   // 新增回呼網址
-  redirectUrl: "https://0rigind1865-bit.github.io/Attendance-System/"
+  redirectUrl: "https://williamtell072228525-lang.github.io/Attendance-System/"
   // 你也可以在這裡加入其他設定，例如：
   // timeout: 5000,
   // version: 'v1.0'
