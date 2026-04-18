@@ -229,7 +229,7 @@ async function renderDailyRecords(dateKey) {
     const userId = localStorage.getItem("sessionUserId");
 
     // 檢查快取
-    if (monthDataCache[month]) {
+    if (monthDataCache[month] && Array.isArray(monthDataCache[month])) {
         renderRecords(monthDataCache[month]);
         recordsLoading.style.display = 'none';
     } else {
@@ -243,10 +243,16 @@ async function renderDailyRecords(dateKey) {
             })
             recordsLoading.style.display = 'none';
             if (res.ok) {
-                // 將資料存入快取
-                console.log(res.records.dailyStatus);
-                monthDataCache[month] = res.records.dailyStatus;
-                renderRecords(res.records.dailyStatus);
+                // 檢查回應資料是否有效
+                if (res.records && res.records.dailyStatus && Array.isArray(res.records.dailyStatus)) {
+                    // 將資料存入快取
+                    console.log(res.records.dailyStatus);
+                    monthDataCache[month] = res.records.dailyStatus;
+                    renderRecords(res.records.dailyStatus);
+                } else {
+                    console.error("Invalid API response data:", res.records);
+                    showNotification(t("ERROR_FETCH_RECORDS"), "error");
+                }
             } else {
                 console.error("Failed to fetch attendance records:", res.msg);
                 showNotification(t("ERROR_FETCH_RECORDS"), "error");
@@ -263,6 +269,14 @@ async function renderDailyRecords(dateKey) {
      * @param {Array} records - 出席記錄陣列，每個元素包含 date, record, reason, hours 等資訊。
      */
     function renderRecords(records) {
+        // 檢查 records 是否為有效陣列
+        if (!records || !Array.isArray(records)) {
+            console.error("Invalid records data:", records);
+            dailyRecordsEmpty.style.display = 'block';
+            dailyRecordsCard.style.display = 'block';
+            return;
+        }
+
         // 從該月份的所有紀錄中，過濾出所選日期的紀錄
         const dailyRecords = records.filter(record => {
             return record.date === dateKey;
