@@ -244,11 +244,11 @@ async function renderDailyRecords(dateKey) {
             recordsLoading.style.display = 'none';
             if (res.ok) {
                 // 檢查回應資料是否有效
-                if (res.records && res.records.dailyStatus && Array.isArray(res.records.dailyStatus)) {
+                if (res.records && Array.isArray(res.records)) {
                     // 將資料存入快取
-                    console.log(res.records.dailyStatus);
-                    monthDataCache[month] = res.records.dailyStatus;
-                    renderRecords(res.records.dailyStatus);
+                    console.log(res.records);
+                    monthDataCache[month] = res.records;
+                    renderRecords(res.records);
                 } else {
                     console.error("Invalid API response data:", res.records);
                     showNotification(t("ERROR_FETCH_RECORDS"), "error");
