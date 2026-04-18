@@ -22,8 +22,10 @@
 
 // Handlers.gs
 
-function handleGetProfile(code) {
-  const tokenResp = exchangeCodeForToken_(code);
+function handleGetProfile(params) {
+  const { otoken, state } = params || {};
+  const redirectUrl = getRedirectFromState(state) || LINE_REDIRECT_URL;
+  const tokenResp = exchangeCodeForToken_(otoken, redirectUrl);
   const profile   = getLineUserInfo_(tokenResp);
   const sToken    = writeSession_(profile.userId);
   writeEmployee_(profile);
@@ -35,13 +37,47 @@ function handleGetProfile(code) {
   };
 }
 
-function handleGetLoginUrl() {
-  const baseUrl = LINE_REDIRECT_URL;
-  const state   = Utilities.getUuid();
+function getRedirectFromState(state) {
+  if (!state) return null;
+  try {
+    const decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(state)).getDataAsString();
+    const payload = JSON.parse(decoded);
+    return payload && payload.redirectUrl ? String(payload.redirectUrl) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function handleGetLoginUrl(params) {
+  const callbackUrl = (params && params.callbackUrl) ? String(params.callbackUrl) : LINE_REDIRECT_URL;
+  const redirectUrl = getAllowedRedirectUrl(callbackUrl);
+  const statePayload = {
+    nonce: Utilities.getUuid(),
+    redirectUrl
+  };
+  const state   = Utilities.base64EncodeWebSafe(JSON.stringify(statePayload));
   const scope   = encodeURIComponent('openid profile email');
-  const redirect= encodeURIComponent(baseUrl);
-  const url     = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${encodeURIComponent(LINE_CHANNEL_ID)}&redirect_uri=${redirect}&state=${state}&scope=${scope}`;
+  const redirect= encodeURIComponent(redirectUrl);
+  const url     = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${encodeURIComponent(LINE_CHANNEL_ID)}&redirect_uri=${redirect}&state=${encodeURIComponent(state)}&scope=${scope}`;
   return { url };
+}
+
+function getAllowedRedirectUrl(url) {
+  const allowedUrls = [
+    "https://williamtell072228525-lang.github.io/Attendance-System/",
+    "http://127.0.0.1:5500/"
+  ];
+
+  try {
+    const normalized = String(url).trim();
+    if (allowedUrls.includes(normalized)) return normalized;
+    const parsed = new URL(normalized);
+    if (allowedUrls.includes(parsed.origin + "/")) return parsed.origin + "/";
+  } catch (err) {
+    // ignore invalid URL
+  }
+
+  return LINE_REDIRECT_URL;
 }
 
 function handleCheckSession(sessionToken) {

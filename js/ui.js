@@ -51,14 +51,15 @@ async function renderCalendar(date, isrefresh = false) {
                 userId: userId
             })
             if (res.ok) {
-                // 將資料存入快取
-                monthDataCache[monthkey] = res.records.dailyStatus;
+                // 將資料存入快取，支援兩種回傳結構
+                const records = Array.isArray(res.records)
+                    ? res.records
+                    : (res.records && Array.isArray(res.records.dailyStatus) ? res.records.dailyStatus : []);
+                monthDataCache[monthkey] = records;
 
                 // 收到資料後，清空載入訊息
                 calendarGrid.innerHTML = '';
 
-                // 從快取取得本月資料
-                const records = monthDataCache[monthkey] || [];
                 renderCalendarWithData(year, month, today, records, calendarGrid, monthTitle);
             } else {
                 console.error("Failed to fetch attendance records:", res.msg);
@@ -113,6 +114,7 @@ function renderCalendarWithData(year, month, today, records, calendarGrid, month
         let dateClass = 'normal-day';
 
         const todayRecords = records.filter(r => r.date === dateKey);
+        const isToday = (year === today.getFullYear() && month === today.getMonth() && i === today.getDate());
         // 初始化假日判斷，預設為 false
         let isHoliday = false;
 
@@ -121,42 +123,34 @@ function renderCalendarWithData(year, month, today, records, calendarGrid, month
             const reason = record.reason;
 
             // 🌟 新增：取得假日狀態 🌟
-            // 假設 isHoliday 來自 checkAttendance1 處理後的 dailyStatus 結構
+            // 假設 isHoliday 來自 checkAttendance 處理後的 dailyStatus 結構
             isHoliday = record.isHoliday || false;
 
             // 設定背景顏色 (根據打卡狀態)
-            switch (reason) {
-                case "STATUS_PUNCH_IN_MISSING":
-                    dateClass = 'abnormal-day';
-                    break;
-                case "STATUS_PUNCH_OUT_MISSING":
-                    dateClass = 'abnormal-day';
-                    break;
-                case "STATUS_PUNCH_NORMAL":
-                    dateClass = 'day-off';
-                    break;
-                case "STATUS_REPAIR_PENDING":
-                    dateClass = 'pending-virtual';
-                    break;
-                case "STATUS_REPAIR_APPROVED":
-                    dateClass = 'approved-virtual';
-                    break;
-                default:
-                    if (reason && reason !== "") {
-                        dateClass = 'pending-adjustment'; // 假設所有有備註的都算 pending
-                    }
-                    break;
+            if (reason === '正常') {
+                dateClass = 'normal-day';
+            } else if (reason === '請假') {
+                dateClass = 'day-off';
+            } else if (reason === '補卡通過') {
+                dateClass = 'approved-virtual';
+            } else if (reason === '有補卡(審核中)') {
+                dateClass = 'pending-virtual';
+            } else if (reason && reason !== '') {
+                dateClass = 'abnormal-day';
             }
+        } else if (cellDate < today || isToday) {
+            // 如果該日期已過去或是今天，但沒有打卡紀錄，標記為異常
+            dateClass = 'abnormal-day';
         }
         if (isHoliday) {
             // 由於是假日，將日期文字設為紅色 (需在 CSS 中定義 .holiday-text)
             dayCell.classList.add('holiday-text');
         }
 
-        const isToday = (year === today.getFullYear() && month === today.getMonth() && i === today.getDate());
         if (isToday) {
             dayCell.classList.add('today');
-        } else if (cellDate > today) {
+        }
+        if (cellDate > today) {
             dayCell.classList.add('future-day');
             dayCell.style.pointerEvents = 'none'; // 未來日期不可點擊
         } else {
@@ -244,11 +238,19 @@ async function renderDailyRecords(dateKey) {
             recordsLoading.style.display = 'none';
             if (res.ok) {
                 // 檢查回應資料是否有效
-                if (res.records && Array.isArray(res.records)) {
+                let recordsData = null;
+                if (res.records) {
+                    if (Array.isArray(res.records)) {
+                        recordsData = res.records;
+                    } else if (res.records.dailyStatus && Array.isArray(res.records.dailyStatus)) {
+                        recordsData = res.records.dailyStatus;
+                    }
+                }
+                if (recordsData) {
                     // 將資料存入快取
-                    console.log(res.records);
-                    monthDataCache[month] = res.records;
-                    renderRecords(res.records);
+                    console.log(recordsData);
+                    monthDataCache[month] = recordsData;
+                    renderRecords(recordsData);
                 } else {
                     console.error("Invalid API response data:", res.records);
                     showNotification(t("ERROR_FETCH_RECORDS"), "error");

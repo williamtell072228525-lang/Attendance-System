@@ -90,8 +90,10 @@ async function renderAdminCalendar(userId, date) {
             });
 
             if (res.ok) {
-                // 儲存至快取
-                const records = res.records.dailyStatus || [];
+                // 支援兩種回傳結構
+                const records = Array.isArray(res.records)
+                    ? res.records
+                    : (res.records && Array.isArray(res.records.dailyStatus) ? res.records.dailyStatus : []);
                 adminMonthDataCache[cacheKey] = records;
 
                 // 更新 UI
@@ -538,14 +540,17 @@ async function renderAdminDailyRecords(dateKey, userId) {
             const res = await callApifetch({
                 action: 'getAttendanceDetails',
                 month: monthKey,
-                targetUserId: userId
+                userId: userId
             }, 'admin-records-loading');
 
             adminRecordsLoading.style.display = 'none';
 
             if (res.ok) {
-                adminMonthDataCache[adminCacheKey] = res.records.dailyStatus;
-                renderRecords(res.records.dailyStatus);
+                const records = Array.isArray(res.records)
+                    ? res.records
+                    : (res.records && Array.isArray(res.records.dailyStatus) ? res.records.dailyStatus : []);
+                adminMonthDataCache[adminCacheKey] = records;
+                renderRecords(records);
             } else {
                 console.error("Admin: Failed to fetch attendance records:", res.msg);
                 showNotification(t("ERROR_FETCH_RECORDS"), "error");
@@ -1338,19 +1343,11 @@ function setupAdminExport() {
         });
 
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const { baseMonthly, hourlyRate } = resolveHourlyRateForExport();
 
         const sheetRows = [
-            ['日期', '星期', '上班時間', '上班地點', '下班時間', '下班地點', '完整打卡紀錄',
-                '原始時數(小時)', '淨工時(小時)',
-                '休息扣除(小時)', '正常工時(小時)', '加班工時(小時)',
-                '日薪(NTD)', '備註']
+            ['日期', '星期', '上班時間', '上班地點', '下班時間', '下班地點', '完整打卡紀錄', '備註']
         ];
-        const calcRows = [['日期', '計算過程說明', '日薪 (NTD)']];
 
-        let totalHours = 0, totalRawHours = 0, totalBreakMinutes = 0, totalSalary = 0;
-        let totalNormalHours = 0;
-        let totalOvertimeHours = 0;
         for (let d = 1; d <= daysInMonth; d++) {
             const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;
             const dateObj = new Date(year, month, d);
@@ -1369,95 +1366,50 @@ function setupAdminExport() {
             const inLoc = inPunch ? (inPunch.location || inPunch.loc || inPunch.place || inPunch.geo || '') : '';
             const outTime = outPunch ? (outPunch.time || outPunch.timeString || outPunch.clockTime || outPunch.t || outPunch.ts || '') : '';
             const outLoc = outPunch ? (outPunch.location || outPunch.loc || outPunch.place || outPunch.geo || '') : '';
+            const note = r ? (r.note || r.remark || r.comment || r.reason || '') : '';
 
-            const dayOfWeek = dateObj.getDay(); // 必須從 dateObj 取得
-            const isNationalHoliday = r && r.isHoliday || false; // 必須從 r 紀錄或 map 取得
-            const dayType = determineDayType(dayOfWeek, isNationalHoliday); // 假設 determineDayType 函式在全域可用
-            // 原始時數
-            let rawHours = 0;
-            if (r && (r.hours != null)) rawHours = Number(r.hours);
-            else if (r && (r.totalHours != null)) rawHours = Number(r.totalHours);
-            else rawHours = computeRawHoursFromDailyPunches(punches, dateKey) || 0;
+            sheetRows.push([
+                dateKey, weekday, inTime, inLoc, outTime, outLoc, punchDetail, note
+            ]);
+        }
 
-            // 使用 calculateDailySalaryFromPunches（包含休息扣除）或 fallback
-            let effectiveHours = 0, breakMinutes = 0, dailySalary = 0, calcDesc = '';
-            let normalHours = 0, overtimeHours = 0, restHours = 0;
-            if (punchPairs.length > 0 && typeof calculateDailySalaryFromPunches === 'function') {
-                const summary = summarizeDailyPunchPairs(punchPairs, dateKey, hourlyRate, dayType);
-                effectiveHours = Number(summary.effectiveHours || 0);
-                breakMinutes = Number(summary.totalBreakMinutes || 0);
-                dailySalary = Number(summary.totalSalary || 0);
-                calcDesc = summary.calculation || `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
-                normalHours = Number(summary.totalNormalHours || 0);
-                overtimeHours = Number(summary.totalOvertimeHours || 0);
-                restHours = Number(summary.totalRestHours || 0);
-            } else {
-                effectiveHours = rawHours;
-                breakMinutes = 0;
-                if (typeof calculateDailySalary === 'function') {
-                    const rcalc = calculateDailySalary(effectiveHours, hourlyRate, dayType);
-                    dailySalary = rcalc && rcalc.dailySalary ? Number(rcalc.dailySalary) : Number((effectiveHours * hourlyRate) || 0);
-                    calcDesc = rcalc && rcalc.calculation ? rcalc.calculation : `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
-                    if (rcalc && rcalc.laborHoursDetails) {
-                        normalHours = Number(rcalc.laborHoursDetails.normalHours || 0);
-                        overtimeHours = Number(rcalc.laborHoursDetails.overtimeHours || 0);
-                        restHours = Number(rcalc.laborHoursDetails.restHours || 0);
-                    }
-                } else {
-                    dailySalary = effectiveHours * hourlyRate;
-                    calcDesc = `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
+        try {
+            // 第一個工作表：月曆概覽
+            const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '打卡紀錄');
+
+            // 第二個工作表：完整打卡紀錄列表
+            const detailSheetRows = [
+                ['日期', '星期', '時間', '地點', '打卡類別', '備註']
+            ];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateKey = `${year}-${pad(month + 1)}-${pad(d)}`;
+                const dateObj = new Date(year, month, d);
+                const weekday = dateObj.toLocaleDateString(currentLang || 'zh-TW', { weekday: 'short' });
+
+                const r = recordMap[dateKey] || null;
+                const punches = getPunchesFromRecord(r);
+
+                // 遍歷該天的所有打卡紀錄
+                if (Array.isArray(punches) && punches.length > 0) {
+                    punches.forEach(punch => {
+                        const time = punch.time || punch.timeString || punch.clockTime || punch.t || punch.ts || '';
+                        const location = punch.location || punch.loc || punch.place || punch.geo || '';
+                        const type = punch.type || punch.label || punch.tag || punch.mode || punch.action || '';
+                        const note = punch.note || punch.notes || punch.remark || '';
+
+                        detailSheetRows.push([
+                            dateKey, weekday, time, location, type, note
+                        ]);
+                    });
                 }
             }
 
-            const note = r ? (r.note || r.remark || r.comment || '') : '';
+            const wsDetail = XLSX.utils.aoa_to_sheet(detailSheetRows);
+            XLSX.utils.book_append_sheet(wb, wsDetail, '完整紀錄');
 
-            sheetRows.push([
-                dateKey, weekday, inTime, inLoc, outTime, outLoc, punchDetail,
-                Number(rawHours.toFixed ? rawHours.toFixed(2) : rawHours),
-                Number(effectiveHours.toFixed(2)),
-                Number((breakMinutes / 60).toFixed(2)),
-                Number(restHours.toFixed(2)), // 休息扣除
-                Number(normalHours.toFixed(2)), // 正常工時
-                Number(overtimeHours.toFixed(2)), // 加班工時
-                Number(dailySalary.toFixed(2)),
-                note
-            ]);
-            calcRows.push([dateKey, calcDesc, Number(dailySalary.toFixed(2))]);
-
-            totalRawHours += Number(rawHours || 0);
-            totalHours += Number(effectiveHours || 0);
-            totalBreakMinutes += Number(breakMinutes || 0);
-            totalSalary += Number(dailySalary || 0);
-            totalNormalHours += normalHours;
-            totalOvertimeHours += overtimeHours;
-        }
-
-        const summaryRows = [
-            ['員工', (currentManagingEmployee && currentManagingEmployee.name) || userId],
-            ['年度', year],
-            ['月份', pad(month + 1)],
-            ['基本薪資 (NTD/月)', baseMonthly],
-            ['時薪 (NTD/小時)', Number(hourlyRate.toFixed(4))],
-            ['總原始時數 (小時)', Number(totalRawHours.toFixed(2))],
-            ['總淨工時 (小時)', Number(totalHours.toFixed(2))],
-            ['總休息時間 (小時)', Number((totalBreakMinutes / 60).toFixed(2))],
-            ['總薪資 (NTD)', Number(totalSalary.toFixed(2))],
-            ['總原始時數 (小時)', Number(totalRawHours.toFixed(2))],
-            ['總淨工時 (小時)', Number(totalHours.toFixed(2))],
-            ['總休息時間 (小時)', Number((totalBreakMinutes / 60).toFixed(2))],
-            ['總正常工時 (小時)', Number(totalNormalHours.toFixed(2))], // <-- 新增
-            ['總加班工時 (小時)', Number(totalOvertimeHours.toFixed(2))], // <-- 新增
-            ['總薪資 (NTD)', Number(totalSalary.toFixed(2))]
-        ];
-
-        try {
-            const ws1 = XLSX.utils.aoa_to_sheet(sheetRows);
-            const ws2 = XLSX.utils.aoa_to_sheet(calcRows);
-            const ws3 = XLSX.utils.aoa_to_sheet(summaryRows);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws1, '月曆');
-            XLSX.utils.book_append_sheet(wb, ws2, '計算過程');
-            XLSX.utils.book_append_sheet(wb, ws3, '總結');
             const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
             const blob = new Blob([wbout], { type: 'application/octet-stream' });
 

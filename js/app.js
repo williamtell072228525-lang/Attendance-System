@@ -178,7 +178,8 @@ function getDOMElements() {
 function bindEvents() {
     // 登入/登出事件
     loginBtn.onclick = async () => {
-        const res = await callApifetch({ action: 'getLoginUrl' });
+        const callbackUrl = `${window.location.origin}/`;
+        const res = await callApifetch({ action: 'getLoginUrl', callbackUrl });
         if (res.url) window.location.href = res.url;
     };
 
@@ -286,12 +287,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     let loginResult = { isLoggedIn: false, isAdmin: false };
     const params = new URLSearchParams(window.location.search);
     const otoken = params.get('code');
+    const state = params.get('state');
 
     if (otoken) {
         // 處理 otoken 換取 sessionToken 的流程
         document.getElementById("status").textContent = t("VERIFYING_AUTH");
         try {
-            const res = await callApifetch({ action: 'getProfile', otoken: otoken });
+            const res = await callApifetch({ action: 'getProfile', otoken: otoken, state });
             if (res.ok && res.sToken) {
                 localStorage.setItem("sessionToken", res.sToken);
                 history.replaceState({}, '', window.location.pathname);

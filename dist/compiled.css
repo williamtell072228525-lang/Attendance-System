@@ -2025,8 +2025,8 @@ html.dark .notification {
 }
 
 .day-cell.normal-day {
-  background-color: #f3f4f6;
-  color: #1f2937;
+  background-color: #dcfce7;
+  color: #166534;
 }
 
 .day-cell.abnormal-day {
@@ -2081,8 +2081,8 @@ html.dark .day-cell.future-day {
 }
 
 html.dark .day-cell.normal-day {
-  background-color: #1f2937;
-  color: #d1d5db;
+  background-color: #14532d;
+  color: #86efac;
 }
 
 html.dark .day-cell.abnormal-day {

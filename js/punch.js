@@ -188,67 +188,118 @@ async function handleLeaveRequest() {
 async function checkAbnormal() {
     const now = new Date();
     const month = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-    const userId = localStorage.getItem("sessionUserId"); // 假設您在登入成功後儲存了 sessionUserId
+    const userId = localStorage.getItem("sessionUserId");
 
-    // 假設 recordsLoading 也在 state.js 中宣告
-    const recordsLoading = recordsLoadingEl; // 假設您在 state.js 中宣告為 recordsLoadingEl
+    const recordsLoading = recordsLoadingEl;
 
-    if (!recordsLoading) return; // 錯誤處理
+    if (!recordsLoading) return;
 
     recordsLoading.style.display = 'block';
 
     try {
-        const res = await callApifetch({
-            action: 'getAbnormalRecords',
-            month: month,
-            userId: userId
-        })
+        // 檢查快取是否有資料，如果沒有則主動加載
+        let calendarRecords = monthDataCache[month];
+
+        if (!calendarRecords) {
+            console.log("Month cache empty, fetching from API");
+            const res = await callApifetch({
+                action: 'getAttendanceDetails',
+                month: month,
+                userId: userId
+            });
+
+            if (res.ok) {
+                calendarRecords = Array.isArray(res.records)
+                    ? res.records
+                    : (res.records && Array.isArray(res.records.dailyStatus) ? res.records.dailyStatus : []);
+                monthDataCache[month] = calendarRecords;
+            } else {
+                console.error("Failed to fetch calendar records:", res.msg);
+                calendarRecords = [];
+            }
+        }
+
         recordsLoading.style.display = 'none';
+
+        // 計算當月所有日期（從第 1 天到今天）
+        const year = parseInt(month.split('-')[0]);
+        const monthNum = parseInt(month.split('-')[1]);
+        const today = new Date();
+        const lastDay = (monthNum === today.getMonth() + 1 && year === today.getFullYear())
+            ? today.getDate()
+            : new Date(year, monthNum, 0).getDate();
+
+        // 建立已有記錄的日期集合
+        const recordedDates = new Set();
+        (calendarRecords || []).forEach(record => {
+            recordedDates.add(record.date);
+        });
+
+        // 篩選出異常紀錄（包括有記錄但異常的，以及完全沒記錄的）
+        const abnormalRecords = [];
+
+        // 1. 先加入有記錄但異常的日期
+        (calendarRecords || []).forEach(record => {
+            if (record.reason && record.reason !== '正常' && record.reason !== '請假') {
+                abnormalRecords.push(record);
+            }
+        });
+
+        // 2. 再加入完全沒有記錄的日期（今天除外）
+        for (let day = 1; day < lastDay; day++) {
+            const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+            if (!recordedDates.has(dateStr)) {
+                abnormalRecords.push({
+                    date: dateStr,
+                    reason: '未打上班卡, 未打下班卡',
+                    id: `missing-${day}`
+                });
+            }
+        }
+
+        // 按日期排序
+        abnormalRecords.sort((a, b) => new Date(a.date) - new Date(b.date));
 
         const abnormalRecordsSection = abnormalRecordsSectionEl;
         const abnormalList = abnormalListEl;
         const recordsEmpty = recordsEmptyEl;
 
-        if (res.ok) {
-            if (res.records.length > 0) {
-                abnormalRecordsSection.style.display = 'block';
-                recordsEmpty.style.display = 'none';
-                abnormalList.innerHTML = '';
-                res.records.forEach(record => {
-                    // ... (渲染邏輯不變) ...
-                    console.log("Abnormal Record:", record.reason); // 調試輸出
-                    const li = document.createElement('li');
-                    li.className = 'p-3 bg-gray-50 rounded-lg flex justify-between items-center dark:bg-gray-700';
-                    li.innerHTML = `
-                        <div>
-                            <p class="font-medium text-gray-800 dark:text-white">${record.date}</p>
-                            <p class="text-sm text-red-600 dark:text-red-400"
-                               data-i18n-dynamic="true"
-                               data-i18n-key="${record.reason}"> 1
-                           </p>
-                        </div>
-                        <button data-i18n="ADJUST_BUTTON_TEXT" data-date="${record.date}" data-reason="${record.reason}" 
-                                class="adjust-btn text-sm font-semibold 
-                                       text-indigo-600 dark:text-indigo-400 
-                                       hover:text-indigo-800 dark:hover:text-indigo-300">
-                            補打卡
-                        </button>
-                    `;
-                    abnormalList.appendChild(li);
-                    renderTranslations(li); // 來自 core.js
-                });
+        console.log("Abnormal records found:", abnormalRecords.length);
 
-            } else {
-                abnormalRecordsSection.style.display = 'block';
-                recordsEmpty.style.display = 'block';
-                abnormalList.innerHTML = '';
-            }
+        if (abnormalRecords.length > 0) {
+            abnormalRecordsSection.style.display = 'block';
+            recordsEmpty.style.display = 'none';
+            abnormalList.innerHTML = '';
+            abnormalRecords.forEach(record => {
+                console.log("Abnormal Record:", record.reason);
+                const li = document.createElement('li');
+                li.className = 'p-3 bg-gray-50 rounded-lg flex justify-between items-center dark:bg-gray-700';
+                li.innerHTML = `
+                    <div>
+                        <p class="font-medium text-gray-800 dark:text-white">${record.date}</p>
+                        <p class="text-sm text-red-600 dark:text-red-400"
+                           data-i18n-dynamic="true"
+                           data-i18n-key="${record.reason}">
+                       </p>
+                    </div>
+                    <button data-i18n="ADJUST_BUTTON_TEXT" data-date="${record.date}" data-reason="${record.reason}" 
+                            class="adjust-btn text-sm font-semibold 
+                                   text-indigo-600 dark:text-indigo-400 
+                                   hover:text-indigo-800 dark:hover:text-indigo-300">
+                        補打卡
+                    </button>
+                `;
+                abnormalList.appendChild(li);
+                renderTranslations(li);
+            });
+
         } else {
-            console.error("Failed to fetch abnormal records:", res.msg);
-            showNotification(t("ERROR_FETCH_RECORDS"), "error");
+            abnormalRecordsSection.style.display = 'block';
+            recordsEmpty.style.display = 'block';
+            abnormalList.innerHTML = '';
         }
     } catch (err) {
-        console.error(err);
+        console.error("checkAbnormal error:", err);
         if (recordsLoading) recordsLoading.style.display = 'none';
     }
 }

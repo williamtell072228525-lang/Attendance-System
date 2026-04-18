@@ -22,12 +22,12 @@
 
 // LineApi.gs
 
-function exchangeCodeForToken_(code) {
+function exchangeCodeForToken_(code, redirectUri) {
   const url     = 'https://api.line.me/oauth2/v2.1/token';
   const payload = {
     grant_type: 'authorization_code',
     code,
-    redirect_uri: LINE_REDIRECT_URL,
+    redirect_uri: redirectUri || LINE_REDIRECT_URL,
     client_id: LINE_CHANNEL_ID,
     client_secret: LINE_CHANNEL_SECRET
   };

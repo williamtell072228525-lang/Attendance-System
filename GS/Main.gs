@@ -45,9 +45,9 @@ function doGet(e) {
   try {
     switch (action) {
       case "getProfile":
-        return respond1(handleGetProfile(code));
+        return respond1(handleGetProfile(e.parameter));
       case "getLoginUrl":
-        return respond1(handleGetLoginUrl());
+        return respond1(handleGetLoginUrl(e.parameter));
       case "checkSession":
         return respond1(handleCheckSession(sessionToken));
       case "punch":
