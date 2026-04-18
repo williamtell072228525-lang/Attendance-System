@@ -98,6 +98,10 @@ function handleGetLocation() {
 function handleGetReviewRequest() {
   return getReviewRequest();
 }
+
+function handleGetEmployeeList(params) {
+  return getEmployeeList();
+}
 // 新增這兩個函式到你的檔案中
 /**
  * 處理核准審核的請求。

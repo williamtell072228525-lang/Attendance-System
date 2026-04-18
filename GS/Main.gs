@@ -60,6 +60,8 @@ function doGet(e) {
         return respond1(handleGetAbnormalRecords(e.parameter));
       case "getAttendanceDetails":
         return respond1(handleGetAttendanceDetails(e.parameter));
+      case "getEmployeeList":
+        return respond1(handleGetEmployeeList(e.parameter));
       case "markLeave":
         return respond1(handleMarkLeave(e.parameter));
       case "addLocation":

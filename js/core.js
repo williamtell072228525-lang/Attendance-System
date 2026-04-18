@@ -128,8 +128,16 @@ async function callApifetch(params, loadingId = "loading") {
         }
 
         // 解析 JSON 回應
-        const data = await response.json();
-        return data;
+        try {
+            return await response.json();
+        } catch (jsonError) {
+            const text = await response.text();
+            const jsonpMatch = text.match(/^\s*([a-zA-Z_$][0-9a-zA-Z_$]*)\((.*)\)\s*;?\s*$/s);
+            if (jsonpMatch) {
+                return JSON.parse(jsonpMatch[2]);
+            }
+            throw jsonError;
+        }
     } catch (error) {
         // 處理網路或其他錯誤
         showNotification(t("CONNECTION_FAILED"), "error");

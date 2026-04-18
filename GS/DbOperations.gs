@@ -96,6 +96,30 @@ function verifyOneTimeToken_(otoken) {
   return sessionToken;
 }
 
+function getEmployeeList() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_EMPLOYEES);
+  if (!sheet) return { ok: false, msg: '員工名單工作表未找到' };
+
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0] || [];
+  const employees = [];
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row[0]) continue;
+    employees.push({
+      userId: String(row[0] || '').trim(),
+      email: String(row[1] || '').trim(),
+      name: String(row[2] || '').trim(),
+      pictureUrl: String(row[3] || '').trim(),
+      dept: String(row[5] || '').trim(),
+      status: String(row[7] || '').trim() || '啟用'
+    });
+  }
+
+  return { ok: true, employeesList: employees };
+}
+
 // 檢查 Session
 function checkSession_(sessionToken) {
   if (!sessionToken) return { ok: false, code: "MISSING_SESSION_TOKEN " };
