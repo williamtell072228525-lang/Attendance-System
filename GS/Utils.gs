@@ -73,10 +73,15 @@ function checkAttendanceAbnormal(attendanceRows) {
       const rows = dailyRecords[userId][date];
 
       // 過濾系統虛擬卡
-      const filteredRows = rows.filter(r => r.notes !== "系統虛擬卡");
+      const filteredRows = rows.filter(r => r.note !== "系統虛擬卡");
       const types = filteredRows.map(r => r.type);
       const notes = filteredRows.map(r => r.note);
-      const audits =filteredRows.map(r => r.audit);
+      const audits = filteredRows.map(r => r.audit);
+      const isLeaveDay = types.some(t => t === "請假");
+
+      if (isLeaveDay) {
+        continue;
+      }
 
       let reason = "";
       if (types.length === 0) {
@@ -85,9 +90,9 @@ function checkAttendanceAbnormal(attendanceRows) {
         reason = "未打下班卡";
       } else if (types.every(t => t === "下班")) {
         reason = "未打上班卡";
-      }else if (notes.every(t => t === "補卡")) {
+      } else if (notes.every(t => t === "補卡")) {
         reason = "補卡(審核中)";
-      }else if (audits.every(t => t === "v")) {
+      } else if (audits.every(t => t === "v")) {
         reason = "補卡通過";
       }
 
@@ -184,9 +189,12 @@ function checkAttendance(attendanceRows) {
       });
 
       // 只要至少有一對就算正常
+      const hasLeave = record.some(r => r.type === "請假");
       const hasPair = typeCounts["上班"] > 0 && typeCounts["下班"] > 0;
 
-      if (!hasPair) {
+      if (hasLeave) {
+        reason = "請假";
+      } else if (!hasPair) {
         if (typeCounts["上班"] === 0 && typeCounts["下班"] === 0) {
           reason = "未打上班卡, 未打下班卡";
         } else if (typeCounts["上班"] > 0) {
@@ -198,17 +206,17 @@ function checkAttendance(attendanceRows) {
         reason = "補卡通過";
       } else if (hasAdjustment) {
         reason = "有補卡(審核中)";
-      }else{
+      } else {
         reason = "正常";
       }
 
-      if (reason) {
+      if (reason && reason !== "請假") {
         abnormalIdCounter++;
         id = `abnormal-${abnormalIdCounter}`;
       }
 
       dailyStatus.push({
-        ok: !reason,
+        ok: reason === "請假" ? true : !reason,
         date: date,
         record: record,
         reason: reason,

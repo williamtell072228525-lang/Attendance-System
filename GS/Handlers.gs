@@ -60,6 +60,11 @@ function handleAdjustPunch(params) {
   return punchAdjusted(token, type, punchDate, parseFloat(lat), parseFloat(lng), note);
 }
 
+function handleMarkLeave(params) {
+  const { token, date, reason } = params;
+  return markLeave(token, date, reason);
+}
+
 function handleExchangeToken(otoken) {
   const sessionToken = verifyOneTimeToken_(otoken);
   return sessionToken

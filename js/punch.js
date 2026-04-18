@@ -119,6 +119,66 @@ function checkAutoPunch() {
         }
     }
 }
+
+async function handleLeaveRequest() {
+    if (!leaveDateInput || !leaveSubmitBtn) return;
+
+    const selectedDate = leaveDateInput.value;
+    const reason = leaveReasonInput?.value?.trim() || "請假";
+    const feedback = leaveFeedback;
+
+    if (!selectedDate) {
+        showNotification("請選擇請假日期", "error");
+        return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+
+    if (selected <= today) {
+        showNotification("請假日期需為未來日期", "error");
+        return;
+    }
+
+    leaveSubmitBtn.disabled = true;
+    leaveSubmitBtn.textContent = "送出中...";
+    if (feedback) feedback.textContent = "";
+
+    try {
+        const res = await callApifetch({
+            action: 'markLeave',
+            date: selectedDate,
+            reason: reason
+        });
+
+        if (res.ok) {
+            showNotification("請假已標記，等待系統更新。", "success");
+            if (feedback) {
+                feedback.textContent = `已標記 ${selectedDate} 為請假。`;
+                feedback.className = "mt-3 text-sm text-green-600";
+            }
+            leaveReasonInput.value = "";
+        } else {
+            showNotification(res.msg || "請假標記失敗，請稍後再試。", "error");
+            if (feedback) {
+                feedback.textContent = res.msg || "請假標記失敗。";
+                feedback.className = "mt-3 text-sm text-red-600";
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification("網路錯誤，請稍後再試。", "error");
+        if (feedback) {
+            feedback.textContent = "網路錯誤，請稍後再試。";
+            feedback.className = "mt-3 text-sm text-red-600";
+        }
+    } finally {
+        leaveSubmitBtn.disabled = false;
+        leaveSubmitBtn.textContent = "標記請假";
+    }
+}
 // #endregion
 
 // ===================================

@@ -585,12 +585,15 @@ async function renderAdminDailyRecords(dateKey, userId) {
                         li.classList.add('bg-gray-50', 'dark:bg-gray-700'); // 其他類型（灰色系）
                     }
 
-                    // 根據 r.type 的值來選擇正確的翻譯鍵值
-                    const typeKey = r.type === '上班' ? 'PUNCH_IN' : 'PUNCH_OUT';
+                    const typeLabel = r.type === '上班'
+                        ? t('PUNCH_IN')
+                        : r.type === '下班'
+                            ? t('PUNCH_OUT')
+                            : r.type;
 
                     // 產生單一打卡記錄的 HTML
                     li.innerHTML = `
-                        <p class="font-medium text-gray-800 dark:text-white">${r.time} - ${t(typeKey)}</p>
+                        <p class="font-medium text-gray-800 dark:text-white">${r.time} - ${typeLabel}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">地點: ${r.location}</p>
                         <p data-i18n="RECORD_NOTE_PREFIX" class="text-sm text-gray-500 dark:text-gray-400">備註：${r.note}</p>
                     `;
@@ -1338,9 +1341,9 @@ function setupAdminExport() {
         const { baseMonthly, hourlyRate } = resolveHourlyRateForExport();
 
         const sheetRows = [
-            ['日期', '星期', '上班時間', '上班地點', '下班時間', '下班地點',
+            ['日期', '星期', '上班時間', '上班地點', '下班時間', '下班地點', '完整打卡紀錄',
                 '原始時數(小時)', '淨工時(小時)',
-                '休息扣除(小時)', '正常工時(小時)', '加班工時(小時)', // <-- 新增欄位
+                '休息扣除(小時)', '正常工時(小時)', '加班工時(小時)',
                 '日薪(NTD)', '備註']
         ];
         const calcRows = [['日期', '計算過程說明', '日薪 (NTD)']];
@@ -1355,8 +1358,13 @@ function setupAdminExport() {
 
             const r = recordMap[dateKey] || null;
             const punches = getPunchesFromRecord(r);
-            const { inPunch, outPunch } = pickInOutPunches(punches);
+            const punchPairs = groupDailyPunchPairs(punches);
+            const punchDetail = formatPunchDetailsForExport(punches);
+            const firstPair = punchPairs.length > 0 ? punchPairs[0] : null;
+            const lastPair = punchPairs.length > 0 ? punchPairs[punchPairs.length - 1] : null;
 
+            const inPunch = firstPair ? firstPair.inPunch : null;
+            const outPunch = lastPair ? lastPair.outPunch : null;
             const inTime = inPunch ? (inPunch.time || inPunch.timeString || inPunch.clockTime || inPunch.t || inPunch.ts || '') : '';
             const inLoc = inPunch ? (inPunch.location || inPunch.loc || inPunch.place || inPunch.geo || '') : '';
             const outTime = outPunch ? (outPunch.time || outPunch.timeString || outPunch.clockTime || outPunch.t || outPunch.ts || '') : '';
@@ -1369,31 +1377,32 @@ function setupAdminExport() {
             let rawHours = 0;
             if (r && (r.hours != null)) rawHours = Number(r.hours);
             else if (r && (r.totalHours != null)) rawHours = Number(r.totalHours);
-            else rawHours = computeRawHoursFromPunches(inPunch, outPunch, dateKey) || 0;
+            else rawHours = computeRawHoursFromDailyPunches(punches, dateKey) || 0;
 
             // 使用 calculateDailySalaryFromPunches（包含休息扣除）或 fallback
             let effectiveHours = 0, breakMinutes = 0, dailySalary = 0, calcDesc = '';
             let normalHours = 0, overtimeHours = 0, restHours = 0;
-            if (inTime && outTime && typeof calculateDailySalaryFromPunches === 'function') {
-                const res = calculateDailySalaryFromPunches(inTime, outTime, hourlyRate, dayType);
-                effectiveHours = Number(res.effectiveHours || 0);
-                breakMinutes = Number(res.totalBreakMinutes || 0);
-                dailySalary = Number(res.dailySalary || 0);
-                calcDesc = res.calculation || `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
-                if (res.laborHoursDetails) {
-                    normalHours = Number(res.laborHoursDetails.normalHours || 0);
-                    overtimeHours = Number(res.laborHoursDetails.overtimeHours || 0);
-                    // restHours 已經在 calculateDailySalaryFromPunches 中被計算，這裡是從結果物件中再次取得小時數
-                    restHours = Number(res.laborHoursDetails.restHours || 0);
-                }
+            if (punchPairs.length > 0 && typeof calculateDailySalaryFromPunches === 'function') {
+                const summary = summarizeDailyPunchPairs(punchPairs, dateKey, hourlyRate, dayType);
+                effectiveHours = Number(summary.effectiveHours || 0);
+                breakMinutes = Number(summary.totalBreakMinutes || 0);
+                dailySalary = Number(summary.totalSalary || 0);
+                calcDesc = summary.calculation || `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
+                normalHours = Number(summary.totalNormalHours || 0);
+                overtimeHours = Number(summary.totalOvertimeHours || 0);
+                restHours = Number(summary.totalRestHours || 0);
             } else {
                 effectiveHours = rawHours;
                 breakMinutes = 0;
                 if (typeof calculateDailySalary === 'function') {
-
                     const rcalc = calculateDailySalary(effectiveHours, hourlyRate, dayType);
                     dailySalary = rcalc && rcalc.dailySalary ? Number(rcalc.dailySalary) : Number((effectiveHours * hourlyRate) || 0);
                     calcDesc = rcalc && rcalc.calculation ? rcalc.calculation : `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
+                    if (rcalc && rcalc.laborHoursDetails) {
+                        normalHours = Number(rcalc.laborHoursDetails.normalHours || 0);
+                        overtimeHours = Number(rcalc.laborHoursDetails.overtimeHours || 0);
+                        restHours = Number(rcalc.laborHoursDetails.restHours || 0);
+                    }
                 } else {
                     dailySalary = effectiveHours * hourlyRate;
                     calcDesc = `${effectiveHours} × ${hourlyRate.toFixed(2)} = ${dailySalary.toFixed(2)}`;
@@ -1403,7 +1412,7 @@ function setupAdminExport() {
             const note = r ? (r.note || r.remark || r.comment || '') : '';
 
             sheetRows.push([
-                dateKey, weekday, inTime, inLoc, outTime, outLoc,
+                dateKey, weekday, inTime, inLoc, outTime, outLoc, punchDetail,
                 Number(rawHours.toFixed ? rawHours.toFixed(2) : rawHours),
                 Number(effectiveHours.toFixed(2)),
                 Number((breakMinutes / 60).toFixed(2)),
@@ -1562,16 +1571,132 @@ function parseTimeToDate(timeStr, dateKey) {
 }
 
 /**
- * 由 in/out 打卡物件與 dateKey 計算原始時數 (小時，保留兩位)
+ * 將連續的打卡紀錄配對為上班與下班對
+ * @param {Array} punches
+ * @returns {Array<{inPunch: object|null, outPunch: object|null}>}
  */
-function computeRawHoursFromPunches(inPunch, outPunch, dateKey) {
-    const inTimeStr = inPunch && (inPunch.time || inPunch.timeString || inPunch.clockTime || inPunch.t || inPunch.ts) || '';
-    const outTimeStr = outPunch && (outPunch.time || outPunch.timeString || outPunch.clockTime || outPunch.t || outPunch.ts) || '';
-    const a = parseTimeToDate(inTimeStr, dateKey);
-    const b = parseTimeToDate(outTimeStr, dateKey);
-    if (!a || !b) return 0;
-    const diff = (b - a) / 3600000;
-    return diff >= 0 ? Number(diff.toFixed(2)) : 0;
+function groupDailyPunchPairs(punches) {
+    if (!Array.isArray(punches) || punches.length === 0) return [];
+
+    const isInType = t => /上班|上班打卡|IN|in|clock_in|checkin|start/i.test(String(t || ''));
+    const isOutType = t => /下班|下班打卡|OUT|out|clock_out|checkout|end|finish/i.test(String(t || ''));
+    const pairs = [];
+    let currentIn = null;
+
+    punches.forEach(p => {
+        const type = p.type || p.label || p.tag || p.mode || p.action || '';
+        if (isInType(type)) {
+            if (currentIn && !currentIn.closed) {
+                pairs.push({ inPunch: currentIn, outPunch: null });
+            }
+            currentIn = { ...p, closed: false };
+        } else if (isOutType(type)) {
+            if (currentIn && !currentIn.closed) {
+                pairs.push({ inPunch: currentIn, outPunch: p });
+                currentIn.closed = true;
+                currentIn = null;
+            } else {
+                pairs.push({ inPunch: null, outPunch: p });
+            }
+        } else {
+            // 其他類型視為補打卡或額外紀錄，可當成一筆獨立紀錄保留
+            if (currentIn && !currentIn.closed) {
+                // 不自動關閉，繼續等待下班
+            }
+        }
+    });
+
+    if (currentIn && !currentIn.closed) {
+        pairs.push({ inPunch: currentIn, outPunch: null });
+    }
+
+    return pairs;
+}
+
+/**
+ * 將一整天的打卡紀錄轉為 Excel 可讀的字串
+ * @param {Array} punches
+ * @returns {string}
+ */
+function formatPunchDetailsForExport(punches) {
+    if (!Array.isArray(punches) || punches.length === 0) return '';
+    return punches.map(p => {
+        const time = p.time || p.timeString || p.clockTime || p.t || p.ts || '';
+        const type = p.type || p.label || p.tag || p.mode || p.action || '未知類型';
+        const location = p.location || p.loc || p.place || p.geo || '';
+        const note = p.note || p.notes || p.remark || '';
+        const parts = [`${time} ${type}`];
+        if (location) parts.push(`地點:${location}`);
+        if (note) parts.push(`備註:${note}`);
+        return parts.join(' ');
+    }).join(' ; ');
+}
+
+/**
+ * 計算一整天的原始打卡時數，支援多組上下班配對
+ * @param {Array} punches
+ * @param {string} dateKey
+ * @returns {number}
+ */
+function computeRawHoursFromDailyPunches(punches, dateKey) {
+    const pairs = groupDailyPunchPairs(punches);
+    let total = 0;
+    pairs.forEach(pair => {
+        const inTimeStr = pair.inPunch && (pair.inPunch.time || pair.inPunch.timeString || pair.inPunch.clockTime || pair.inPunch.t || pair.inPunch.ts) || '';
+        const outTimeStr = pair.outPunch && (pair.outPunch.time || pair.outPunch.timeString || pair.outPunch.clockTime || pair.outPunch.t || pair.outPunch.ts) || '';
+        const a = parseTimeToDate(inTimeStr, dateKey);
+        const b = parseTimeToDate(outTimeStr, dateKey);
+        if (a && b) {
+            const diff = (b - a) / 3600000;
+            if (diff >= 0) total += diff;
+        }
+    });
+    return Number(total.toFixed(2));
+}
+
+/**
+ * 將多組打卡對計算成整天的有效工時與日薪總和
+ * @param {Array} punchPairs
+ * @param {string} dateKey
+ * @param {number} hourlyRate
+ * @param {string} dayType
+ * @returns {{effectiveHours:number,totalBreakMinutes:number,totalSalary:number,totalNormalHours:number,totalOvertimeHours:number,totalRestHours:number,calculation:string}}
+ */
+function summarizeDailyPunchPairs(punchPairs, dateKey, hourlyRate, dayType) {
+    let effectiveHours = 0;
+    let totalBreakMinutes = 0;
+    let totalSalary = 0;
+    let totalNormalHours = 0;
+    let totalOvertimeHours = 0;
+    let totalRestHours = 0;
+    let calculation = '';
+
+    punchPairs.forEach((pair, index) => {
+        const inTimeStr = pair.inPunch && (pair.inPunch.time || pair.inPunch.timeString || pair.inPunch.clockTime || pair.inPunch.t || pair.inPunch.ts) || '';
+        const outTimeStr = pair.outPunch && (pair.outPunch.time || pair.outPunch.timeString || pair.outPunch.clockTime || pair.outPunch.t || pair.outPunch.ts) || '';
+        if (!inTimeStr || !outTimeStr) return;
+
+        const res = calculateDailySalaryFromPunches(inTimeStr, outTimeStr, hourlyRate, dayType);
+        effectiveHours += Number(res.effectiveHours || 0);
+        totalBreakMinutes += Number(res.totalBreakMinutes || 0);
+        totalSalary += Number(res.dailySalary || 0);
+        if (res.laborHoursDetails) {
+            totalNormalHours += Number(res.laborHoursDetails.normalHours || 0);
+            totalOvertimeHours += Number(res.laborHoursDetails.overtimeHours || 0);
+            totalRestHours += Number(res.laborHoursDetails.restHours || 0);
+        }
+        calculation += `第${index + 1}組: ${res.calculation || ''}； `;
+    });
+
+    return {
+        effectiveHours: Number(effectiveHours.toFixed(2)),
+        totalBreakMinutes: Number(totalBreakMinutes.toFixed(0)),
+        totalSalary: Number(totalSalary.toFixed(2)),
+        totalNormalHours: Number(totalNormalHours.toFixed(2)),
+        totalOvertimeHours: Number(totalOvertimeHours.toFixed(2)),
+        totalRestHours: Number(totalRestHours.toFixed(2)),
+        calculation: calculation.trim()
+    };
 }
 
 /**

@@ -126,6 +126,12 @@ function getDOMElements() {
     abnormalListEl = document.getElementById("abnormal-list");
     recordsEmptyEl = document.getElementById("records-empty");
 
+    // 請假標記
+    leaveDateInput = document.getElementById('leave-date');
+    leaveReasonInput = document.getElementById('leave-reason');
+    leaveSubmitBtn = document.getElementById('leave-submit-btn');
+    leaveFeedback = document.getElementById('leave-feedback');
+
     // 員工月曆
     calendarGrid = document.getElementById('calendar-grid');
 
@@ -194,6 +200,9 @@ function bindEvents() {
 
     tabFormBtn.addEventListener('click', () => switchTab('Form-view'));
 
+    if (leaveSubmitBtn) {
+        leaveSubmitBtn.addEventListener('click', handleLeaveRequest);
+    }
 
     // === 導航 管理員子Tab 切換事件 () ===
     tabEmployeeMgmtBtn.addEventListener('click', () => switchAdminSubTab('employee-mgmt-view'));
@@ -255,6 +264,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     getDOMElements(); // 必須在最前面執行
     document.getElementById('language-switcher').value = currentLang;
     localStorage.setItem("lang", currentLang);
+
+    if (leaveDateInput) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowValue = tomorrow.toISOString().slice(0, 10);
+        leaveDateInput.min = tomorrowValue;
+        leaveDateInput.value = tomorrowValue;
+    }
 
     // II. 載入基本狀態 (翻譯)
     await loadTranslations(currentLang);

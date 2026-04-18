@@ -186,6 +186,36 @@ function punchAdjusted(sessionToken, type, punchDate, lat, lng, note) {
   return { ok: true, code: `ADJUST_PUNCH_SUCCESS`,params: { type: type } };
 }
 
+function markLeave(sessionToken, date, reason) {
+  const employee = checkSession_(sessionToken);
+  const user = employee.user;
+  if (!user) return { ok: false, code: "ERR_SESSION_INVALID" };
+
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_ATTENDANCE);
+  if (!sh) return { ok: false, code: "ATTENDANCE_SHEET_NOT_FOUND" };
+
+  const leaveDate = new Date(date);
+  if (isNaN(leaveDate.getTime())) {
+    return { ok: false, code: "ERR_INVALID_DATE" };
+  }
+
+  const row = [
+    leaveDate,
+    user.userId,
+    user.dept,
+    user.name,
+    "請假",
+    "",
+    "",
+    reason || "請假",
+    "v",
+    ""
+  ];
+  sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+
+  return { ok: true, code: "LEAVE_MARKED" };
+}
+
 function getAttendanceRecords(monthParam, userIdParam) {
     // 從 `getAbnormalRecords` 案例中提取的邏輯
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ATTENDANCE);

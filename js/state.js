@@ -63,6 +63,11 @@ let adminDailyRecordsList = null;
 let adminRecordsLoading = null;
 let adminDailyRecordsEmpty = null;
 
+let leaveDateInput = null;
+let leaveReasonInput = null;
+let leaveSubmitBtn = null;
+let leaveFeedback = null;
+
 let pendingRequests = []; // 新增：用於快取待審核的請求
 
 // 全域變數，用於儲存地圖實例

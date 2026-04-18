@@ -294,12 +294,16 @@ async function renderDailyRecords(dateKey) {
                         li.classList.add('bg-gray-50', 'dark:bg-gray-700'); // 其他類型（灰色系）
                     }
 
-                    // 根據 r.type 的值來選擇正確的翻譯鍵值
-                    const typeKey = r.type === '上班' ? 'PUNCH_IN' : 'PUNCH_OUT';
+                    // 根據 r.type 的值來選擇正確的label
+                    const typeLabel = r.type === '上班'
+                        ? t('PUNCH_IN')
+                        : r.type === '下班'
+                            ? t('PUNCH_OUT')
+                            : r.type;
 
                     // 產生單一打卡記錄的 HTML
                     li.innerHTML = `
-                    <p class="font-medium text-gray-800 dark:text-white">${r.time} - ${t(typeKey)}</p>
+                    <p class="font-medium text-gray-800 dark:text-white">${r.time} - ${typeLabel}</p>
                     <p class="text-sm text-gray-500 dark:text-gray-400">${r.location}</p>
                     <p data-i18n="RECORD_NOTE_PREFIX" class="text-sm text-gray-500 dark:text-gray-400">備註：${r.note}</p>
                 `;
